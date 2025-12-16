@@ -125,15 +125,52 @@ def generate_cards_json(tmp_dir, output_path):
             with open(json1_path, 'r', encoding='utf-8') as f:
                 json1_data = json.load(f)
 
+            json1_count = len(json1_data.get("data", []))
+            print(f"Loaded {json1_count} cards from json1.json.")
+
             cards_data = {}
+            skipped_count = 0
             if "data" in json1_data:
                 for card in json1_data["data"]:
-                    # Get the main ID of the card to look up the name and description
+                    # Get the main ID of the card
                     main_id = card.get("id")
 
+                    # Try to find card_info using main_id
                     card_info = id_to_data.get(main_id)
-                    cn_name = card_info["name"] if card_info else None
-                    desc = card_info["desc"] if card_info else None
+
+                    # If not found, try using IDs from card_images
+                    if not card_info and "card_images" in card:
+                        for image in card["card_images"]:
+                            if "id" in image:
+                                img_id = image["id"]
+                                card_info = id_to_data.get(img_id)
+                                if card_info:
+                                    break
+
+                    # If still not found, skip this card
+                    if not card_info:
+                        print(f"Error: Card with id {main_id} not found in json2. Skipping.")
+                        skipped_count += 1
+                        continue
+
+                    cn_name = card_info["name"]
+                    desc = card_info["desc"]
+
+                    # Determine cardType based on frameType
+                    frame_type = card.get("frameType")
+                    processed_frame_type = frame_type.replace('_', '-') if frame_type else None
+
+                    card_type = "monster"
+                    if frame_type == "spell":
+                        card_type = "spell"
+                    elif frame_type == "trap":
+                        card_type = "trap"
+
+                    # Determine attribute
+                    if card_type == "monster":
+                        attribute = card.get("attribute", "").lower()
+                    else:
+                        attribute = card_type
 
                     if "card_images" in card:
                         for image in card["card_images"]:
@@ -141,18 +178,46 @@ def generate_cards_json(tmp_dir, output_path):
                                 try:
                                     card_id = int(image["id"])
                                     # Use string of int for key (JSON requirement), int for values
-                                    cards_data[str(card_id)] = {
+                                    card_obj = {
                                         "id": card_id,
                                         "cardImage": card_id,
                                         "name": cn_name,
-                                        "description": desc
+                                        "description": desc,
+                                        "cardType": card_type,
+                                        "attribute": attribute,
+                                        "frameType": processed_frame_type
                                     }
+
+                                    if card_type in ["spell", "trap"]:
+                                        card_obj["race"] = card.get("race", "").lower()
+
+                                    if card_type == "monster":
+                                        if "atk" in card:
+                                            card_obj["atk"] = card["atk"]
+
+                                        # Check if it is a link monster
+                                        is_link = frame_type and "link" in frame_type.lower()
+                                        if not is_link:
+                                            if "def" in card:
+                                                card_obj["def"] = card["def"]
+                                            if "level" in card:
+                                                card_obj["level"] = card["level"]
+
+                                    cards_data[str(card_id)] = card_obj
                                 except ValueError:
                                     print(f"Warning: Could not convert id {image['id']} to int.")
 
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(cards_data, f, ensure_ascii=False, indent=4)
-            print(f"Successfully generated {output_path} with {len(cards_data)} cards.")
+
+            print("-" * 30)
+            print(f"Summary:")
+            print(f"json1.json: {json1_count} cards")
+            print(f"json2.json: {len(id_to_data)} cards")
+            print(f"cards.json: {len(cards_data)} cards")
+            if skipped_count > 0:
+                print(f"Skipped: {skipped_count} cards (not found in json2)")
+            print("-" * 30)
 
         except Exception as e:
             print(f"Error generating cards.json: {e}")
