@@ -96,15 +96,45 @@ def generate_cards_json(tmp_dir, output_path):
     # 4. Generate cards.json from json1.json
     print("Generating cards.json from json1.json...")
     json1_path = os.path.join(tmp_dir, "json1.json")
+    json2_path = os.path.join(tmp_dir, "json2.json")
 
-    if os.path.exists(json1_path):
+    if os.path.exists(json1_path) and os.path.exists(json2_path):
         try:
+            # Load json2 to build a map of id -> data
+            print("Loading json2.json for name and description lookup...")
+            with open(json2_path, 'r', encoding='utf-8') as f:
+                json2_data = json.load(f)
+
+            # json2_data is a dict where values are card objects
+            id_to_data = {}
+            for card in json2_data.values():
+                if "id" in card:
+                    card_id = card["id"]
+                    cn_name = card.get("cn_name")
+                    desc = ""
+                    if "text" in card and "desc" in card["text"]:
+                        desc = card["text"]["desc"]
+
+                    id_to_data[card_id] = {
+                        "name": cn_name,
+                        "desc": desc
+                    }
+
+            print(f"Loaded {len(id_to_data)} cards from json2.json.")
+
             with open(json1_path, 'r', encoding='utf-8') as f:
                 json1_data = json.load(f)
 
             cards_data = {}
             if "data" in json1_data:
                 for card in json1_data["data"]:
+                    # Get the main ID of the card to look up the name and description
+                    main_id = card.get("id")
+
+                    card_info = id_to_data.get(main_id)
+                    cn_name = card_info["name"] if card_info else None
+                    desc = card_info["desc"] if card_info else None
+
                     if "card_images" in card:
                         for image in card["card_images"]:
                             if "id" in image:
@@ -113,7 +143,9 @@ def generate_cards_json(tmp_dir, output_path):
                                     # Use string of int for key (JSON requirement), int for values
                                     cards_data[str(card_id)] = {
                                         "id": card_id,
-                                        "cardImage": card_id
+                                        "cardImage": card_id,
+                                        "name": cn_name,
+                                        "description": desc
                                     }
                                 except ValueError:
                                     print(f"Warning: Could not convert id {image['id']} to int.")
@@ -125,7 +157,7 @@ def generate_cards_json(tmp_dir, output_path):
         except Exception as e:
             print(f"Error generating cards.json: {e}")
     else:
-        print(f"{json1_path} not found, cannot generate cards.json.")
+        print(f"json1.json or json2.json not found, cannot generate cards.json.")
 
 def main():
     tmp_dir = "tmp"
