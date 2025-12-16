@@ -112,12 +112,17 @@ def generate_cards_json(tmp_dir, output_path):
                     card_id = card["id"]
                     cn_name = card.get("cn_name")
                     desc = ""
-                    if "text" in card and "desc" in card["text"]:
-                        desc = card["text"]["desc"]
+                    pdesc = ""
+                    if "text" in card:
+                        if "desc" in card["text"]:
+                            desc = card["text"]["desc"].replace('\r\n', '\n')
+                        if "pdesc" in card["text"]:
+                            pdesc = card["text"]["pdesc"].replace('\r\n', '\n')
 
                     id_to_data[card_id] = {
                         "name": cn_name,
-                        "desc": desc
+                        "desc": desc,
+                        "pdesc": pdesc
                     }
 
             print(f"Loaded {len(id_to_data)} cards from json2.json.")
@@ -155,6 +160,7 @@ def generate_cards_json(tmp_dir, output_path):
 
                     cn_name = card_info["name"]
                     desc = card_info["desc"]
+                    pdesc = card_info["pdesc"]
 
                     # Determine cardType based on frameType
                     frame_type = card.get("frameType")
@@ -202,6 +208,19 @@ def generate_cards_json(tmp_dir, output_path):
                                                 card_obj["def"] = card["def"]
                                             if "level" in card:
                                                 card_obj["level"] = card["level"]
+                                        else:
+                                            # Link monster specific attributes
+                                            if "linkval" in card:
+                                                card_obj["linkVal"] = card["linkval"]
+                                            if "linkmarkers" in card:
+                                                card_obj["linkMarkers"] = [m.lower() for m in card["linkmarkers"]]
+
+                                        # Check if it is a pendulum monster
+                                        is_pendulum = frame_type and "pendulum" in frame_type.lower()
+                                        if is_pendulum:
+                                            if "scale" in card:
+                                                card_obj["scale"] = card["scale"]
+                                            card_obj["pendulumDescription"] = pdesc
 
                                     cards_data[str(card_id)] = card_obj
                                 except ValueError:
