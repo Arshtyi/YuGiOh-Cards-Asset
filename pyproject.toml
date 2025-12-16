@@ -1,0 +1,9 @@
+[project]
+name = "yugioh-cards-asset"
+version = "0.1.0"
+description = "Set up YuGiOh! cards info."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "requests>=2.32.5",
+]

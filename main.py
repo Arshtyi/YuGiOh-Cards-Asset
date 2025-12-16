@@ -1,0 +1,141 @@
+import os
+import requests
+import zipfile
+import hashlib
+import json
+
+def download_file(url, filepath):
+    print(f"Downloading {url} to {filepath}...")
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+    with open(filepath, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print("Download complete.")
+
+def verify_md5(filepath, md5_url):
+    print(f"Verifying MD5 for {filepath}...")
+    # Download MD5 content
+    response = requests.get(md5_url)
+    response.raise_for_status()
+    expected_md5 = response.text.strip().split()[0].replace('"', '').replace("'", "")
+
+    # Calculate file MD5
+    hash_md5 = hashlib.md5()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    calculated_md5 = hash_md5.hexdigest()
+
+    if calculated_md5 == expected_md5:
+        print("MD5 verification successful.")
+        return True
+    else:
+        print(f"MD5 verification failed! Expected {expected_md5}, got {calculated_md5}")
+        return False
+
+def process_json2(tmp_dir):
+    # 1. Handle json2 (ygocdb)
+    zip_url = "https://ygocdb.com/api/v0/cards.zip"
+    md5_url = "https://ygocdb.com/api/v0/cards.zip.md5"
+    zip_path = os.path.join(tmp_dir, "cards.zip")
+
+    # Always download to ensure we have the file
+    download_file(zip_url, zip_path)
+
+    print("Unzipping cards.zip...")
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(tmp_dir)
+
+    # The extracted file is expected to be 'cards.json'
+    extracted_file = os.path.join(tmp_dir, "cards.json")
+
+    if os.path.exists(extracted_file):
+        # Verify MD5 of the extracted JSON file
+        if verify_md5(extracted_file, md5_url):
+            json2_path = os.path.join(tmp_dir, "json2.json")
+            if os.path.exists(json2_path):
+                os.remove(json2_path)
+            os.rename(extracted_file, json2_path)
+            print(f"Renamed {extracted_file} to {json2_path}")
+
+            # Clean up zip file
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+                print(f"Removed {zip_path}")
+        else:
+            print("MD5 verification failed for the extracted file.")
+    else:
+        print(f"Expected extracted file {extracted_file} not found.")
+
+def process_json1(tmp_dir):
+    # 2. Handle json1 (ygoprodeck)
+    json1_url = "https://db.ygoprodeck.com/api/v7/cardinfo.php"
+    json1_path = os.path.join(tmp_dir, "json1.json")
+    download_file(json1_url, json1_path)
+
+def format_json_files(tmp_dir):
+    # 3. Format JSON files
+    for filename in ["json1.json", "json2.json"]:
+        filepath = os.path.join(tmp_dir, filename)
+        if os.path.exists(filepath):
+            print(f"Formatting {filename}...")
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+                print(f"Formatted {filename} successfully.")
+            except Exception as e:
+                print(f"Error formatting {filename}: {e}")
+        else:
+            print(f"{filename} not found.")
+
+def generate_cards_json(tmp_dir, output_path):
+    # 4. Generate cards.json from json1.json
+    print("Generating cards.json from json1.json...")
+    json1_path = os.path.join(tmp_dir, "json1.json")
+
+    if os.path.exists(json1_path):
+        try:
+            with open(json1_path, 'r', encoding='utf-8') as f:
+                json1_data = json.load(f)
+
+            cards_data = {}
+            if "data" in json1_data:
+                for card in json1_data["data"]:
+                    if "card_images" in card:
+                        for image in card["card_images"]:
+                            if "id" in image:
+                                try:
+                                    card_id = int(image["id"])
+                                    # Use string of int for key (JSON requirement), int for values
+                                    cards_data[str(card_id)] = {
+                                        "id": card_id,
+                                        "cardImage": card_id
+                                    }
+                                except ValueError:
+                                    print(f"Warning: Could not convert id {image['id']} to int.")
+
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(cards_data, f, ensure_ascii=False, indent=4)
+            print(f"Successfully generated {output_path} with {len(cards_data)} cards.")
+
+        except Exception as e:
+            print(f"Error generating cards.json: {e}")
+    else:
+        print(f"{json1_path} not found, cannot generate cards.json.")
+
+def main():
+    tmp_dir = "tmp"
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
+
+    process_json2(tmp_dir)
+    process_json1(tmp_dir)
+    format_json_files(tmp_dir)
+    generate_cards_json(tmp_dir, "cards.json")
+
+if __name__ == "__main__":
+    main()
