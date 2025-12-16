@@ -1,6 +1,7 @@
 import os
 import requests
 import zipfile
+import tarfile
 import hashlib
 import json
 
@@ -12,6 +13,27 @@ def download_file(url, filepath):
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
     print("Download complete.")
+
+def verify_sha256(filepath, sha256_url):
+    print(f"Verifying SHA256 for {filepath}...")
+    # Download SHA256 content
+    response = requests.get(sha256_url)
+    response.raise_for_status()
+    expected_sha256 = response.text.strip().split()[0]
+
+    # Calculate file SHA256
+    hash_sha256 = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_sha256.update(chunk)
+    calculated_sha256 = hash_sha256.hexdigest()
+
+    if calculated_sha256 == expected_sha256:
+        print("SHA256 verification successful.")
+        return True
+    else:
+        print(f"SHA256 verification failed! Expected {expected_sha256}, got {calculated_sha256}")
+        return False
 
 def verify_md5(filepath, md5_url):
     print(f"Verifying MD5 for {filepath}...")
@@ -33,6 +55,50 @@ def verify_md5(filepath, md5_url):
     else:
         print(f"MD5 verification failed! Expected {expected_md5}, got {calculated_md5}")
         return False
+
+def download_resources(res_dir):
+    if not os.path.exists(res_dir):
+        os.makedirs(res_dir)
+
+    # 1. token.json
+    token_url = "https://github.com/Arshtyi/YuGiOh-Tokens/releases/download/latest/token.json"
+    token_sha256_url = "https://github.com/Arshtyi/YuGiOh-Tokens/releases/download/latest/token.json.sha256"
+    token_path = os.path.join(res_dir, "token.json")
+
+    download_file(token_url, token_path)
+    if not verify_sha256(token_path, token_sha256_url):
+        print("Warning: token.json verification failed.")
+
+    # 2. forbidden_and_limited_list.tar.xz
+    limited_url = "https://github.com/Arshtyi/YuGiOh-Forbidden-And-Limited-List/releases/download/latest/forbidden_and_limited_list.tar.xz"
+    limited_sha256_url = "https://github.com/Arshtyi/YuGiOh-Forbidden-And-Limited-List/releases/download/latest/forbidden_and_limited_list.tar.xz.sha256"
+    limited_path = os.path.join(res_dir, "forbidden_and_limited_list.tar.xz")
+    limited_extract_dir = os.path.join(res_dir, "limited")
+
+    download_file(limited_url, limited_path)
+    if verify_sha256(limited_path, limited_sha256_url):
+        print("Extracting forbidden_and_limited_list.tar.xz...")
+        if not os.path.exists(limited_extract_dir):
+            os.makedirs(limited_extract_dir)
+        with tarfile.open(limited_path, "r:xz") as tar:
+            tar.extractall(path=limited_extract_dir)
+        print("Extraction complete.")
+
+        # Clean up tar.xz file
+        if os.path.exists(limited_path):
+            os.remove(limited_path)
+            print(f"Removed {limited_path}")
+    else:
+        print("Warning: forbidden_and_limited_list.tar.xz verification failed.")
+
+    # 3. typeline.conf
+    typeline_url = "https://github.com/Arshtyi/Translations-Of-YuGiOh-Cards-Type/releases/download/latest/typeline.conf"
+    typeline_sha256_url = "https://github.com/Arshtyi/Translations-Of-YuGiOh-Cards-Type/releases/download/latest/typeline.conf.sha256"
+    typeline_path = os.path.join(res_dir, "typeline.conf")
+
+    download_file(typeline_url, typeline_path)
+    if not verify_sha256(typeline_path, typeline_sha256_url):
+        print("Warning: typeline.conf verification failed.")
 
 def process_json2(tmp_dir):
     # 1. Handle json2 (ygocdb)
@@ -92,11 +158,46 @@ def format_json_files(tmp_dir):
         else:
             print(f"{filename} not found.")
 
+def load_limited_list(res_dir):
+    limited_data = {
+        "ocg": {},
+        "tcg": {},
+        "md": {}
+    }
+
+    limited_dir = os.path.join(res_dir, "limited")
+    if not os.path.exists(limited_dir):
+        print(f"Warning: Limited list directory {limited_dir} not found.")
+        return limited_data
+
+    for format_name in ["ocg", "tcg", "md"]:
+        file_path = os.path.join(limited_dir, f"{format_name}.json")
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # Flatten the structure: id -> status
+                    # data structure is {"forbidden": [ids], "limited": [ids], "semi-limited": [ids]}
+                    for status, ids in data.items():
+                        for card_id in ids:
+                            limited_data[format_name][card_id] = status
+                print(f"Loaded {format_name} limited list.")
+            except Exception as e:
+                print(f"Error loading {format_name} limited list: {e}")
+        else:
+            print(f"Warning: {format_name}.json not found in {limited_dir}")
+
+    return limited_data
+
 def generate_cards_json(tmp_dir, output_path):
     # 4. Generate cards.json from json1.json
     print("Generating cards.json from json1.json...")
     json1_path = os.path.join(tmp_dir, "json1.json")
     json2_path = os.path.join(tmp_dir, "json2.json")
+    res_dir = "res"
+
+    # Load limited lists
+    limited_lists = load_limited_list(res_dir)
 
     if os.path.exists(json1_path) and os.path.exists(json2_path):
         try:
@@ -179,13 +280,26 @@ def generate_cards_json(tmp_dir, output_path):
                         attribute = card_type
 
                     if "card_images" in card:
+                        # Calculate minimum ID for uniqueId
+                        image_ids = []
+                        for image in card["card_images"]:
+                            if "id" in image:
+                                try:
+                                    image_ids.append(int(image["id"]))
+                                except ValueError:
+                                    pass
+
+                        min_id = min(image_ids) if image_ids else None
+
                         for image in card["card_images"]:
                             if "id" in image:
                                 try:
                                     card_id = int(image["id"])
                                     # Use string of int for key (JSON requirement), int for values
+                                    unique_id = min_id if min_id is not None else card_id
                                     card_obj = {
                                         "id": card_id,
+                                        "uniqueId": unique_id,
                                         "cardImage": card_id,
                                         "name": cn_name,
                                         "description": desc,
@@ -193,6 +307,15 @@ def generate_cards_json(tmp_dir, output_path):
                                         "attribute": attribute,
                                         "frameType": processed_frame_type
                                     }
+
+                                    # Add limited status
+                                    limited_status = {}
+                                    for format_name in ["ocg", "tcg", "md"]:
+                                        if unique_id in limited_lists[format_name]:
+                                            limited_status[format_name] = limited_lists[format_name][unique_id]
+
+                                    if limited_status:
+                                        card_obj["limited"] = limited_status
 
                                     if card_type in ["spell", "trap"]:
                                         card_obj["race"] = card.get("race", "").lower()
@@ -244,6 +367,9 @@ def generate_cards_json(tmp_dir, output_path):
         print(f"json1.json or json2.json not found, cannot generate cards.json.")
 
 def main():
+    res_dir = "res"
+    download_resources(res_dir)
+
     tmp_dir = "tmp"
     if not os.path.exists(tmp_dir):
         os.makedirs(tmp_dir)
