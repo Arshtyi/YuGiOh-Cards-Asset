@@ -1,0 +1,11 @@
+{
+  "name": "陷阱",
+  "id": 12345679,
+  "description": "效果",
+  "cardType": "trap",
+  "frameType": "trap",
+  "attribute": "trap",
+  "race": "normal",
+  "cardImage": 1,"limit": {"ocg":"limited"},
+  "uniqueId":1
+}
