@@ -136,7 +136,7 @@ def generate_cards_json(tmp_dir, output_path, res_dir="res"):
                                             limited_status[format_name] = limited_lists[format_name][unique_id]
 
                                     if limited_status:
-                                        card_obj["limited"] = limited_status
+                                        card_obj["limit"] = limited_status
 
                                     if card_type in ["spell", "trap"]:
                                         card_obj["race"] = card.get("race", "").lower()
@@ -194,14 +194,35 @@ def generate_cards_json(tmp_dir, output_path, res_dir="res"):
                                 except ValueError:
                                     print(f"Warning: Could not convert id {image['id']} to int.")
 
+            # Merge token.json
+            token_path = os.path.join(res_dir, "token.json")
+            token_count = 0
+            count_before_token = len(cards_data)
+
+            if os.path.exists(token_path):
+                try:
+                    with open(token_path, 'r', encoding='utf-8') as f:
+                        token_data = json.load(f)
+                        token_count = len(token_data)
+                        cards_data.update(token_data)
+                        print(f"Merged {token_count} tokens from {token_path}")
+                except Exception as e:
+                    print(f"Error merging token.json: {e}")
+            else:
+                print(f"Warning: {token_path} not found.")
+
+            count_after_token = len(cards_data)
+
             with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(cards_data, f, ensure_ascii=False, indent=4)
+                json.dump(cards_data, f, ensure_ascii=False, indent=4, sort_keys=True)
 
             print("-" * 30)
             print(f"Summary:")
             print(f"json1.json: {json1_count} cards")
             print(f"json2.json: {len(id_to_data)} cards")
-            print(f"cards.json: {len(cards_data)} cards")
+            print(f"cards.json (before tokens): {count_before_token} cards")
+            print(f"token.json: {token_count} cards")
+            print(f"cards.json (final): {count_after_token} cards")
             if skipped_count > 0:
                 print(f"Skipped: {skipped_count} cards (not found in json2)")
             print("-" * 30)

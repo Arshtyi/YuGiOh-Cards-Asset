@@ -1,0 +1,96 @@
+name: Release Assets
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run main script
+        run: uv run main.py
+
+      - name: Compress images and generate checksums
+        run: |
+          mkdir -p release_assets
+
+          # Check if fig directory exists and has files
+          if [ -d "fig" ] && [ "$(ls -A fig)" ]; then
+            echo "Compressing images from fig/..."
+            # List all files in fig/
+            find fig -maxdepth 1 -type f | sort > all_files.txt
+
+            # Split into chunks of 10000
+            split -l 10000 -d all_files.txt chunk_
+
+            for chunk in chunk_*; do
+              # Extract index (remove leading zeros, handle 00 -> 0)
+              idx=$(echo ${chunk#chunk_} | sed 's/^0*//')
+              [ -z "$idx" ] && idx=0
+
+              tar_name="card-images-${idx}.tar.xz"
+              echo "Creating $tar_name..."
+
+              # Create tar.xz using the file list in the chunk
+              tar -cJf "release_assets/$tar_name" -T "$chunk"
+
+              # Generate SHA256
+              (cd release_assets && sha256sum "$tar_name" > "$tar_name.sha256")
+            done
+
+            # Cleanup
+            rm chunk_* all_files.txt
+          else
+            echo "Warning: fig directory is empty or missing."
+          fi
+
+          # Handle cards.json
+          if [ -f "cards.json" ]; then
+            echo "Processing cards.json..."
+            cp cards.json release_assets/
+            (cd release_assets && sha256sum cards.json > cards.json.sha256)
+          else
+            echo "Error: cards.json not found!"
+            exit 1
+          fi
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="latest"
+          RELEASE_NAME="latest"
+
+          # Check if tag exists and delete remote tag/release if it does
+          if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+            echo "Deleting existing release and tag '$TAG_NAME'..."
+            gh release delete "$TAG_NAME" --cleanup-tag -y
+          fi
+
+          # Create new release
+          echo "Creating new release..."
+          gh release create "$TAG_NAME" \
+            release_assets/* \
+            --title "$RELEASE_NAME" \
+            --notes "Auto-generated assets from YuGiOh-Cards-Asset. Please refer to [README.md](${{ github.server_url }}/${{ github.repository }}/blob/main/README.md) for data format and details." \
+            --target ${{ github.sha }}
