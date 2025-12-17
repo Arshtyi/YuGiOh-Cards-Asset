@@ -37,7 +37,7 @@ jobs:
           if [ -d "fig" ] && [ "$(ls -A fig)" ]; then
             echo "Compressing images from fig/..."
             # List all files in fig/
-            find fig -maxdepth 1 -type f | sort > all_files.txt
+            find fig -maxdepth 1 -type f -printf "%P\n" | sort > all_files.txt
 
             # Split into chunks of 10000
             split -l 10000 -d all_files.txt chunk_
@@ -51,7 +51,7 @@ jobs:
               echo "Creating $tar_name..."
 
               # Create tar.xz using the file list in the chunk
-              tar -cJf "release_assets/$tar_name" -T "$chunk"
+              tar -cJf "release_assets/$tar_name" -C fig -T "$chunk"
 
               # Generate SHA256
               (cd release_assets && sha256sum "$tar_name" > "$tar_name.sha256")
