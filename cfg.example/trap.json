@@ -6,6 +6,7 @@
   "frameType": "trap",
   "attribute": "trap",
   "race": "normal",
-  "cardImage": 1,"limit": {"ocg":"limited"},
+  "cardImage": 1,
+  "limit": {"ocg":"limited"},
   "uniqueId":1
 }

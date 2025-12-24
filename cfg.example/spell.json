@@ -6,6 +6,7 @@
   "frameType": "spell",
   "attribute": "spell",
   "race": "normal",
-  "cardImage": 1,"limit": {"ocg":"limited"},
+  "cardImage": 1,
+  "limit": {"ocg":"limited"},
   "uniqueId":1
 }
