@@ -2,7 +2,7 @@ name: Release Assets
 
 on:
   schedule:
-    - cron: "0 12 * * 2,4"
+    - cron: "0 11 * * 2,4"
   workflow_dispatch:
 
 permissions:
