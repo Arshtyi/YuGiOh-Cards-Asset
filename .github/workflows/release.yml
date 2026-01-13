@@ -80,6 +80,14 @@ jobs:
           TAG_NAME="latest"
           RELEASE_NAME="latest"
 
+          # Count cards
+          if [ -f "cards.json" ]; then
+            CARD_COUNT=$(jq length cards.json)
+          else
+            CARD_COUNT="Unknown"
+          fi
+          echo "Total cards: $CARD_COUNT"
+
           # Check if tag exists and delete remote tag/release if it does
           if gh release view "$TAG_NAME" > /dev/null 2>&1; then
             echo "Deleting existing release and tag '$TAG_NAME'..."
@@ -91,5 +99,5 @@ jobs:
           gh release create "$TAG_NAME" \
             release_assets/* \
             --title "$RELEASE_NAME" \
-            --notes "Auto-generated assets from YuGiOh-Cards-Asset. Please refer to [README.md](${{ github.server_url }}/${{ github.repository }}/blob/main/README.md) for data format and details." \
+            --notes "Auto-generated assets from YuGiOh-Cards-Asset. Total cards: **$CARD_COUNT**. Please refer to [README.md](${{ github.server_url }}/${{ github.repository }}/blob/main/README.md) for data format and details." \
             --target ${{ github.sha }}
